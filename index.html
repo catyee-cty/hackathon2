@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SELENE-GPU · Lunar Site Navigator · WebGPU</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Orbitron:wght@500;700;900&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+    <!-- WebGPU Canvas Container -->
+    <div id="canvas-container">
+      <canvas id="webgpu-canvas"></canvas>
+    </div>
+
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━ MISSION HEADER ━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <header id="mission-header">
+      <div class="header-left">
+        <div class="logo-badge">
+          <div class="apollo-crest"></div>
+          <div class="logo-text">
+            <span class="mission-tag">NASA ARTEMIS III · LUNAR SURFACE NAVIGATION SYSTEM</span>
+            <h1>SELENE-GPU &nbsp;// &nbsp;SITE NAVIGATOR</h1>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-center">
+        <div class="telemetry-pill">
+          <span class="dot live-pulse"></span>
+          <span class="label">ENGINE:</span>
+          <span id="engine-status" class="value highlight">INITIALIZING...</span>
+        </div>
+        <div class="telemetry-pill">
+          <span class="label">FPS:</span>
+          <span id="fps-counter" class="value" style="color:var(--accent-green);">60.0</span>
+        </div>
+        <div class="telemetry-pill">
+          <span class="label">GPU:</span>
+          <span id="gpu-time" class="value">0.8 ms</span>
+        </div>
+        <div class="telemetry-pill">
+          <span class="label">WEBGPU</span>
+          <span class="value" style="color:var(--accent-cyan);">&#x25CF; LIVE</span>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <div class="time-display">
+          <span class="utc-clock" id="utc-clock">2026-11-14 00:00:00 UTC</span>
+          <span class="sub-label">MET +142:18:04 &nbsp;·&nbsp; WEBGPU ES MODULE ENGINE</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- ━━━━━━━━━━━━ LEFT TACTICAL PANEL: Landing Sites & Coordinates ━━━━━━━━━━━ -->
+    <aside id="tactical-panel" class="hud-panel glass">
+      <!-- View Target Switcher: Whole Globe vs Regional Site -->
+      <div class="panel-section-title">
+        <span class="icon">&#x1F315;</span> NAVIGATION VIEW MODE
+      </div>
+      <div class="btn-group view-switcher-group">
+        <button id="view-globe" class="btn active" data-view="globe">&#x1F30D; WHOLE GLOBE</button>
+        <button id="view-site" class="btn" data-view="site">&#x1F3AF; REGIONAL SITE</button>
+      </div>
+
+      <div class="panel-divider"></div>
+
+      <!-- Tactical Tabs: Site Catalog vs Mission Scanner -->
+      <div class="tab-switcher-row">
+        <button id="tab-site-catalog" class="tab-btn active">
+          <span class="icon">&#x25C8;</span> TARGET SITES
+        </button>
+        <button id="tab-mission-scanner" class="tab-btn">
+          <span class="icon">&#x2696;</span> MISSION SCANNER
+        </button>
+      </div>
+
+      <!-- Section 1: Standard Sites Catalog -->
+      <div id="catalog-section">
+        <div class="panel-section-title">
+          <span class="icon">&#x25C8;</span> ARTEMIS &amp; HISTORIC SITES
+        </div>
+        <div class="site-picker-list" id="site-list">
+          <!-- Injected via JavaScript -->
+        </div>
+      </div>
+
+      <!-- Section 2: Mission Requirements & Candidate Ranking Scanner -->
+      <div id="scanner-section" class="hidden">
+        <div class="panel-section-title">
+          <span class="icon">&#x2696;</span> MISSION REQUIREMENTS
+        </div>
+
+        <div class="control-row">
+          <div class="control-label-row">
+            <span>MISSION PROFILE PRESET:</span>
+          </div>
+          <select id="mission-preset-select" class="hud-select">
+            <option value="artemis_crewed" selected>Artemis III Crewed Lander</option>
+            <option value="viper_volatiles">VIPER Volatiles Rover</option>
+            <option value="solar_power_base">Permanent Solar Outpost</option>
+            <option value="equatorial_mare">Equatorial Mare Science</option>
+            <option value="custom">Custom Requirements</option>
+          </select>
+        </div>
+
+        <!-- 1. Minimum Sunlight Availability -->
+        <div class="control-row">
+          <div class="control-label-row">
+            <span>MIN SUNLIGHT AVAILABILITY:</span>
+            <span id="val-min-sun" class="mono highlight-cyan">80%</span>
+          </div>
+          <input type="range" id="slider-min-sun" min="10" max="95" step="1" value="80" class="hud-slider">
+        </div>
+
+        <!-- 2. Minimum Earth Visibility -->
+        <div class="control-row">
+          <div class="control-label-row">
+            <span>MIN EARTH VISIBILITY (DTE COMMS):</span>
+            <span id="val-min-earth" class="mono highlight-cyan">60%</span>
+          </div>
+          <input type="range" id="slider-min-earth" min="0" max="100" step="5" value="60" class="hud-slider">
+        </div>
+
+        <!-- 3. Maximum Terrain Slope -->
+        <div class="control-row">
+          <div class="control-label-row">
+            <span>MAX TERRAIN SLOPE:</span>
+            <span id="val-max-slope" class="mono highlight-amber">7.0°</span>
+          </div>
+          <input type="range" id="slider-max-slope" min="2" max="20" step="0.5" value="7.0" class="hud-slider">
+        </div>
+
+        <!-- 4. Maximum Continuous Darkness -->
+        <div class="control-row">
+          <div class="control-label-row">
+            <span>MAX CONTINUOUS DARKNESS:</span>
+            <span id="val-max-darkness" class="mono highlight-cyan">54 hrs</span>
+          </div>
+          <input type="range" id="slider-max-darkness" min="12" max="354" step="6" value="54" class="hud-slider">
+        </div>
+
+        <div class="control-row inline-toggles" style="margin-top: 6px;">
+          <label class="hud-checkbox highlight-cyan">
+            <input type="checkbox" id="toggle-location-mapping" checked>
+            <span>PROJECT SUITABILITY ON PBR MOON</span>
+          </label>
+        </div>
+
+        <div class="btn-group" style="margin-top: 10px;">
+          <button id="btn-run-scan" class="btn btn-primary" style="flex:1.4;">&#x25B6; SCAN CANDIDATES</button>
+          <button id="btn-view-pbr" class="btn" style="flex:1;">&#x1F315; PBR VIEW</button>
+          <button id="btn-toggle-suitability-mode" class="btn" style="flex:1;">&#x1F5FA; SUITABILITY</button>
+        </div>
+
+        <div class="panel-divider"></div>
+
+        <!-- Scan Results & Candidate Ranking -->
+        <div class="scanner-results-header">
+          <div class="panel-section-title" style="margin-bottom: 4px;">
+            <span class="icon">&#x1F3C6;</span> RANKED CANDIDATE SITES
+          </div>
+          <div class="scanner-stats-bar" id="scanner-stats-bar">
+            <span class="stat-pill qualified" id="stat-qualified">0 QUALIFIED</span>
+            <span class="stat-pill marginal" id="stat-marginal">0 MARGINAL</span>
+            <span class="stat-pill excluded" id="stat-excluded">0 EXCLUDED</span>
+          </div>
+        </div>
+
+        <div class="ranked-candidates-list" id="ranked-candidates-list">
+          <!-- Dynamically populated candidate cards -->
+        </div>
+
+        <button id="btn-export-report" class="btn btn-sm" style="margin-top: 10px; width: 100%;">
+          &#x1F4CB; EXPORT MISSION ASSESSMENT REPORT
+        </button>
+      </div>
+
+      <div class="panel-divider"></div>
+
+      <div class="panel-section-title">
+        <span class="icon">&#x2316;</span> TELEMETRY &amp; LOCATION
+      </div>
+      <div class="telemetry-grid">
+        <div class="telem-item">
+          <span class="label">LATITUDE</span>
+          <span class="val" id="telem-lat">89.90° S</span>
+        </div>
+        <div class="telem-item">
+          <span class="label">LONGITUDE</span>
+          <span class="val" id="telem-lon">0.00° E</span>
+        </div>
+        <div class="telem-item">
+          <span class="label">ELEVATION</span>
+          <span class="val" id="telem-elev">-4,210 m</span>
+        </div>
+        <div class="telem-item">
+          <span class="label">SURFACE SLOPE</span>
+          <span class="val" id="telem-slope">3.8° (SAFE)</span>
+        </div>
+        <div class="telem-item">
+          <span class="label">SUN ELEVATION</span>
+          <span class="val" id="telem-sun-elev">1.4°</span>
+        </div>
+        <div class="telem-item">
+          <span class="label">SOLAR ILLUM</span>
+          <span class="val highlight-cyan" id="telem-illum">84.2%</span>
+        </div>
+      </div>
+
+      <div class="panel-divider"></div>
+
+      <!-- Dynamic Quadtree Tile LOD Telemetry -->
+      <div class="panel-section-title">
+        <span class="icon">&#x26F6;</span> DYNAMIC TILE LOD TELEMETRY
+      </div>
+      <div class="telemetry-grid">
+        <div class="telem-item">
+          <span class="label">ACTIVE CHUNKS</span>
+          <span class="val highlight-cyan" id="lod-chunks">18</span>
+        </div>
+        <div class="telem-item">
+          <span class="label">MAX LOD DEPTH</span>
+          <span class="val highlight" id="lod-max-depth">LOD 6</span>
+        </div>
+        <div class="telem-item">
+          <span class="label">HORIZON CULLED</span>
+          <span class="val" id="lod-culled">42 tiles</span>
+        </div>
+        <div class="telem-item">
+          <span class="label">TRIANGLES</span>
+          <span class="val" id="lod-triangles">9,216</span>
+        </div>
+      </div>
+      <div class="lod-level-strip" id="lod-level-strip">
+        <span class="lod-badge b0">L0: 2</span>
+        <span class="lod-badge b1">L1: 4</span>
+        <span class="lod-badge b2">L2: 8</span>
+        <span class="lod-badge b3">L3: 4</span>
+        <span class="lod-badge b4">L4: 0</span>
+        <span class="lod-badge b5">L5: 0</span>
+        <span class="lod-badge b6">L6: 0</span>
+      </div>
+
+      <div class="telemetry-grid" style="margin-top:8px;">
+        <div class="telem-item">
+          <span class="label">ATLAS TILES</span>
+          <span class="val highlight-cyan" id="lod-atlas-nasa">0 NASA</span>
+        </div>
+        <div class="telem-item">
+          <span class="label">PROCEDURAL</span>
+          <span class="val" id="lod-atlas-proc">0 SYNTH</span>
+        </div>
+      </div>
+
+      <div class="panel-divider"></div>
+
+      <div class="panel-section-title">
+        <span class="icon">&#x2699;</span> CAMERA MODE
+      </div>
+      <div class="btn-group">
+        <button id="cam-orbit" class="btn active" data-mode="orbit">ORBIT VIEW</button>
+        <button id="cam-surface" class="btn" data-mode="surface">ROVER SURFACE</button>
+        <button id="cam-topdown" class="btn" data-mode="topdown">TACTICAL TOP</button>
+      </div>
+    </aside>
+
+    <!-- ━━━━━━━━━━ RIGHT PANEL: NASA Real Tiles, Shading Modes & Solar Sim ━━━━━━━━━━ -->
+    <aside id="controls-panel" class="hud-panel glass">
+      <div class="panel-section-title">
+        <span class="icon">&#x25C9;</span> NASA REAL TILE STREAMER
+      </div>
+      <div class="tile-streamer-box">
+        <div class="control-row inline-toggles">
+          <label class="hud-checkbox highlight-cyan">
+            <input type="checkbox" id="toggle-real-nasa" checked>
+            <span>STREAM REAL NASA TILES</span>
+          </label>
+          <span class="tile-badge-status" id="tile-status">READY</span>
+        </div>
+        <div class="control-row">
+          <div class="control-label-row">
+            <span>DATASET LAYER:</span>
+          </div>
+          <select id="nasa-layer-select" class="hud-select">
+            <option value="lro_wac" selected>NASA LRO WAC Global Mosaic (Photo)</option>
+            <option value="lola_shade">NASA LOLA Altimetry Topography (Color)</option>
+            <option value="opm_basemap">OpenPlanetary / CARTO Moon Basemap</option>
+          </select>
+        </div>
+        <div class="control-row">
+          <div class="control-label-row">
+            <span>TILE MATRIX ZOOM:</span>
+            <span id="tile-zoom-val" class="mono" style="color:var(--accent-cyan);">LEVEL 4</span>
+          </div>
+          <input type="range" id="tile-zoom-slider" min="2" max="6" value="4" class="hud-slider">
+        </div>
+        <div class="tile-meta-card">
+          <div class="tile-thumb-container">
+            <canvas id="tile-preview-canvas" width="60" height="60"></canvas>
+          </div>
+          <div class="tile-info-text">
+            <div class="info-row"><span class="k">WMTS:</span> <span class="v mono" id="tile-wmts-coords">Z:4 &bull; X:10 &bull; Y:8</span></div>
+            <div class="info-row"><span class="k">BBOX:</span> <span class="v mono" id="tile-bbox-coords">-90.0° to -67.5°</span></div>
+            <div class="info-row"><span class="k">TEAM:</span> <span class="v truncate" id="tile-source-attr">NASA GSFC / LROC Team</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-divider"></div>
+
+      <div class="panel-section-title">
+        <span class="icon">&#x229E;</span> WEBGPU SHADING MODES
+      </div>
+      <div class="shading-modes-grid" id="shading-modes">
+        <button class="mode-btn active" data-shader-mode="0">
+          <span class="mode-name">REALISTIC PBR</span>
+          <span class="mode-desc">Hapke/Lommel-Seeliger Regolith &bull; Site Location Reticles</span>
+        </button>
+        <button class="mode-btn" data-shader-mode="1">
+          <span class="mode-name">SLOPE HAZARD</span>
+          <span class="mode-desc">Safe (&lt;5°) &bull; Moderate (5-12°) &bull; Danger (&gt;15°)</span>
+        </button>
+        <button class="mode-btn" data-shader-mode="2">
+          <span class="mode-name">HYPSOMETRIC DEM</span>
+          <span class="mode-desc">LOLA Elevation Contours (-9km to +10km)</span>
+        </button>
+        <button class="mode-btn" data-shader-mode="3">
+          <span class="mode-name">SOLAR ILLUMINATION</span>
+          <span class="mode-desc">Direct Sunlight vs South Pole PSRs</span>
+        </button>
+        <button class="mode-btn" data-shader-mode="4">
+          <span class="mode-name">LANDER HAZARD MAP</span>
+          <span class="mode-desc">Composite Slope + Roughness Heatmap</span>
+        </button>
+        <button class="mode-btn" data-shader-mode="5">
+          <span class="mode-name">SURFACE NORMALS</span>
+          <span class="mode-desc">High-precision Tangent Space Normals</span>
+        </button>
+        <button class="mode-btn" data-shader-mode="6">
+          <span class="mode-name">QUADTREE LOD HEATMAP</span>
+          <span class="mode-desc">L0 Blue &bull; L2 Green &bull; L4 Orange &bull; L6 Magenta</span>
+        </button>
+        <button class="mode-btn" data-shader-mode="7">
+          <span class="mode-name">MISSION SUITABILITY MAP</span>
+          <span class="mode-desc">Green: Prime Touchdown &bull; Orange: Slope Limit &bull; Navy: No Comms</span>
+        </button>
+      </div>
+
+      <div class="panel-divider"></div>
+
+      <div class="panel-section-title">
+        <span class="icon">&#x2600;</span> SOLAR ILLUMINATION &amp; SHADOW SIMULATOR
+      </div>
+      <div class="control-row">
+        <div class="control-label-row">
+          <span>SUN AZIMUTH:</span>
+          <span id="sun-azimuth-val" class="mono" style="color:var(--accent-amber);">45°</span>
+        </div>
+        <input type="range" id="sun-azimuth" min="0" max="360" value="45" class="hud-slider">
+      </div>
+      <div class="control-row">
+        <div class="control-label-row">
+          <span>SUN ALTITUDE:</span>
+          <span id="sun-altitude-val" class="mono" style="color:var(--accent-amber);">28.0°</span>
+        </div>
+        <input type="range" id="sun-altitude" min="-5" max="65" step="0.1" value="28.0" class="hud-slider">
+      </div>
+      <div class="control-row inline-toggles">
+        <label class="hud-checkbox">
+          <input type="checkbox" id="animate-sun">
+          <span>ORBITAL SUN TIME-LAPSE</span>
+        </label>
+        <label class="hud-checkbox">
+          <input type="checkbox" id="earth-shine" checked>
+          <span>EARTHSHINE DIFFUSE</span>
+        </label>
+      </div>
+
+      <div class="panel-divider"></div>
+
+      <div class="panel-section-title">
+        <span class="icon">&#x27A4;</span> ROVER TRAVERSE PATHFINDER
+      </div>
+      <p class="section-hint">Compute safe traversal corridor avoiding steep crater slopes &amp; maximizing solar power output along route.</p>
+      <div class="btn-group">
+        <button id="btn-plot-route" class="btn btn-primary">&#x25B6; SOLVE OPTIMAL ROUTE</button>
+        <button id="btn-clear-route" class="btn">CLEAR</button>
+      </div>
+      <div id="path-metrics" class="path-metrics-box hidden">
+        <div class="metric-row">
+          <span>TOTAL DISTANCE:</span>
+          <strong id="metric-dist">14.8 km</strong>
+        </div>
+        <div class="metric-row">
+          <span>MAX SLOPE:</span>
+          <strong id="metric-max-slope" class="safe">7.2° (PASSED)</strong>
+        </div>
+        <div class="metric-row">
+          <span>SOLAR EXPOSURE:</span>
+          <strong id="metric-sun-pct" class="highlight-cyan">91.4%</strong>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ━━━━━━━━━━━━━━━━━━━━ BOTTOM TACTICAL STATUS BAR ━━━━━━━━━━━━━━━━━━━━ -->
+    <footer id="bottom-bar" class="hud-panel glass">
+      <div class="bottom-left">
+        <div class="crosshair-info">
+          <span class="crosshair-icon">&#x2295;</span>
+          <span class="info-label">TARGET:</span>
+          <span id="target-coordinates" class="info-val">SHACKLETON CRATER RIM [SOUTH POLE CONNECTING RIDGE]</span>
+        </div>
+      </div>
+      <div class="bottom-center">
+        <div class="legend-bar" id="legend-container">
+          <span class="legend-label" id="legend-min">SAFE (0°)</span>
+          <div class="gradient-strip" id="legend-gradient"></div>
+          <span class="legend-label" id="legend-max">HAZARDOUS (&gt;15°)</span>
+        </div>
+      </div>
+      <div class="bottom-right">
+        <button id="btn-location-mapping" class="btn btn-sm active" title="Toggle Location Mapping overlay in PBR Moon Viewer">&#x1F3AF; SITE RETICLES [ON]</button>
+        <button id="btn-wireframe" class="btn btn-sm">WIREFRAME [OFF]</button>
+        <button id="btn-reset-cam" class="btn btn-sm">RESET VIEW</button>
+        <button id="btn-about" class="btn btn-sm">&#x24D8; SPECS</button>
+      </div>
+    </footer>
+
+    <!-- Center Crosshair Reticle -->
+    <div id="hud-reticle">
+      <div class="reticle-circle"></div>
+      <div class="reticle-line h"></div>
+      <div class="reticle-line v"></div>
+      <div class="reticle-coords" id="reticle-hud-text">POINT CLOUD LOCK</div>
+    </div>
+
+    <!-- Modal (About / Diagnostics / Mission Report) -->
+    <div id="modal-container" class="modal-backdrop hidden">
+      <div class="modal-box glass">
+        <h2 id="modal-title">LUNAR SITE NAVIGATOR SPECIFICATIONS</h2>
+        <div class="modal-content" id="modal-content">
+          <!-- Populated dynamically -->
+        </div>
+        <button id="modal-close" class="btn btn-primary">ACKNOWLEDGE &amp; CLOSE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- UTC Clock live update script (runs before module) -->
+  <script>
+    function updateClock() {
+      const now = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      const str = `${now.getUTCFullYear()}-${pad(now.getUTCMonth()+1)}-${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())} UTC`;
+      const el = document.getElementById('utc-clock');
+      if (el) el.textContent = str;
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+  </script>
+
+  <!-- Main script entry point (Native ES Modules) -->
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
